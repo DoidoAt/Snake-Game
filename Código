@@ -1,0 +1,582 @@
+(require 2htdp/image)
+(require 2htdp/universe)
+
+;; =================
+;; Constantes
+(define TELA 600)
+(define TAM 10)
+
+(define COBRA (square TAM "solid" "black"))
+(define VELOCIDADE (+ TAM 0.25))
+
+(define FRUTA (square (/ TAM 2) "solid" "black"))
+(define FRUTA-MIN 20)
+(define FRUTA-MAX 575)
+
+(define FUNDO (overlay
+               (square (- TELA 40) "outline" "black")
+               (square TELA "solid" "yellow")))
+
+;; =================
+;; Definições de dados
+
+(define-struct fruta [x y])
+;; Fruta é (make-fruta Número Número)
+;; Interp. a posição da fruta
+;;         x é o número de pixels entre a borda esquerda da janela
+;;         e o início da fruta.
+;;         y é o número de pixels entre a borda superior da janela
+;;         e o início da fruta.
+(define EX-FRUTA-1 (make-fruta 150 150))
+
+#;
+(define (fn-para-fruta fruta)
+  (... (fruta-x fruta)   ; Número
+       (fruta-y fruta))) ; Número
+
+(define-struct cobra [x y])
+;; Cobra é (make-cobra Número Número)
+;; Interp. a posição da fruta
+;;         x é o número de pixels entre a borda esquerda da janela
+;;         e o início da cobra.
+;;         y é o número de pixels entre a borda superior da janela
+;;         e o início da cobra.
+(define EX-COBRA-1 (make-cobra 300 300))
+
+#;
+(define (fn-para-cobra cobra)
+  (... (cobra-x cobra)   ; Número
+       (cobra-y cobra))) ; Número
+
+;; ListaDeCobra é um dos valores:
+;; - '()
+;; - (cons Cobra ListaDecobra)
+;; Interp. uma lista de segmentos do tipo Cobra que formam a cobra.
+(define EX-LC1 '())
+(define EX-LC2 (cons (make-cobra 300 300) '()))
+(define EX-LC3 (cons (make-cobra 311 300)
+                     (cons (make-cobra 300 300)
+                           '())))
+#;
+(define (fn-para-lc lc)
+  (cond [(empty? lc) (...)]
+        [else
+         (... (first lc)
+              (fn-para-lc (rest lc)))]))
+
+;; Direção é um dos valores:
+;; - "Up"
+;; - "Down"
+;; - "Left"
+;; - "Right"
+;; - "Ini"
+;; - "Stop"
+;; Interp. A direção em que a cobra está se movimentando, sem
+;; a alteração do usuário. Ini é o estado inicial da cobra e Stop
+;; é o estado em que a cobra se encontra ao perder o jogo.
+(define EX-DIR1 "Up")
+(define EX-DIR2 "Down")
+(define EX-DIR3 "Left")
+(define EX-DIR4 "Right")
+(define EX-DIR5 "Ini")
+(define EX-DIR6 "Stop")
+
+#;
+(define (fn-para-direcao d)
+  (cond [(string=? d "Up") (...)]
+        [(string=? d "Down") (...)]
+        [(string=? d "Left") (...)]
+        [(string=? d "Right") (...)]
+        [(string=? d "Ini") (...)]
+        [(string=? d "Stop") (...)]))
+
+(define-struct sg [corpo fruta d])
+;; SnakeGame é (make-sg ListaDeCobra Fruta Direção)
+;; Interp. o estado do jogo snake game com o corpo da cobra, a fruta
+;;         e a direção em que a cobra está indo.
+(define JOGO-INICIAL (make-sg (cons (make-cobra 300 250)
+                                    (cons (make-cobra (+ 300 VELOCIDADE) 250)
+                                          '()))
+                              (make-fruta 150 150)
+                              "Ini"))
+
+#;
+(define (fn-para-sg sg)
+  (... (fn-para-lc (sg-corpo sg))
+       (fn-para-fruta (sg-fruta sg))
+       (fn-para-direcao (sg-d sg))))
+
+
+;; =================
+;; Funções
+
+;; SnakeGame -> SnakeGame
+;; Inicie o jogo com (main JOGO-INICIAL)
+;; 
+(define (main sg)
+  (big-bang sg                ; SnakeGame
+    [name      "Snake"]       ; O título da Janela
+    [to-draw   desenha]       ; SnakeGame -> Imagem
+    [on-tick   avanca 1/14]   ; SnakeGame -> SnakeGame
+    [on-key    trata-tecla])) ; SnakeGame KeyEvent -> SnakeGame
+;    [stop-when ...]))        ; SnakeGame -> Booleano
+
+;; EstadoJogo -> Imagem
+;; Produz a imagem do jogo com o corpo da cobra e a fruta na posição apropriada.
+(check-expect (desenha (make-sg (cons (make-cobra 150 150) '())
+                                (make-fruta 60 60)
+                                "Ini"))
+              (overlay (text "Aperta qualquer direção para começar" 20 "black")
+                       (place-image/align COBRA
+                                 150
+                                 150
+                                 "left"
+                                 "top"
+                                 (place-image/align FRUTA
+                                                    60
+                                                    60
+                                                    "left"
+                                                    "top"
+                                                    FUNDO))))
+(check-expect (desenha (make-sg (cons (make-cobra 150 150) '())
+                                (make-fruta 60 60)
+                                "Up"))
+              (place-image/align COBRA
+                                 150
+                                 150
+                                 "left"
+                                 "top"
+                                 (place-image/align FRUTA
+                                                    60
+                                                    60
+                                                    "left"
+                                                    "top"
+                                                    FUNDO)))
+(check-expect (desenha (make-sg (cons (make-cobra 15 15) '())
+                                (make-fruta 60 60)
+                                "Stop"))
+              (overlay (text "Fim de Jogo! Aperte espaço para recomeçar"
+                             20
+                             "black")
+                       (place-image/align COBRA
+                                 15
+                                 15
+                                 "left"
+                                 "top"
+                                 (place-image/align FRUTA
+                                                    60
+                                                    60
+                                                    "left"
+                                                    "top"
+                                                    FUNDO))))
+              
+(define (desenha sg)
+  (cond [(string=? (sg-d sg) "Ini")
+         (overlay (text "Aperta qualquer direção para começar" 20 "black")
+                  (desenha-corpo (sg-corpo sg) (desenha-fruta (sg-fruta sg) FUNDO)))]
+        [(string=? (sg-d sg) "Stop")
+         (overlay (text "Fim de Jogo! Aperte espaço para recomeçar" 20 "black")
+                  (desenha-corpo (sg-corpo sg) (desenha-fruta (sg-fruta sg) FUNDO)))]
+        [else
+         (desenha-corpo (sg-corpo sg) (desenha-fruta (sg-fruta sg) FUNDO))]))
+
+;; EstadoJogo -> EstadoJogo
+;; Produz o próximo estado de jogo avançando o corpo da cobra e a fruta.
+(check-expect (avanca (make-sg (cons (make-cobra 300 300) '())
+                               (make-fruta 150 150)
+                               "Ini"))
+              JOGO-INICIAL)
+(check-expect (avanca (make-sg (cons (make-cobra 300 300) '())
+                               (make-fruta 150 150)
+                               "Up"))
+              (make-sg (cons (make-cobra 300 (- 300 VELOCIDADE)) '())
+                       (make-fruta 150 150)
+                       "Up"))
+(check-random (avanca (make-sg (cons (make-cobra 300 300) '())
+                               (make-fruta 302 302)
+                               "Up"))
+              (make-sg (cons (make-cobra 300 (- 300 VELOCIDADE))
+                             (cons (make-cobra 300 300) '()))
+                       (make-fruta (+ FRUTA-MIN (random (- FRUTA-MAX FRUTA-MIN)))
+                                   (+ FRUTA-MIN (random (- FRUTA-MAX FRUTA-MIN))))
+                       "Up"))
+(check-expect (avanca (make-sg (cons (make-cobra 15 15) '())
+                               (make-fruta 150 150)
+                               "Up"))
+              (make-sg (cons (make-cobra 15 15) '())
+                               (make-fruta 150 150)
+                               "Stop"))
+(check-expect (avanca (make-sg (cons (make-cobra 300 300)
+                                     (cons (make-cobra 300 300) '()))
+                               (make-fruta 150 150)
+                               "Up"))
+              (make-sg (cons (make-cobra 300 300)
+                                     (cons (make-cobra 300 300) '()))
+                               (make-fruta 150 150)
+                               "Stop"))
+
+(define (avanca sg)
+  (if (string=? (sg-d sg) "Ini")
+      JOGO-INICIAL
+      (if (colisao-jogo? (first (sg-corpo sg)))
+          (if (empty? (rest (sg-corpo sg)))
+              (if (colisao-fruta? (first (sg-corpo sg)) (sg-fruta sg))
+                  (make-sg (cria-cab-cobra (sg-corpo sg) (sg-d sg) #true)
+                           (avanca-fruta (sg-fruta sg))
+                           (sg-d sg))
+                  (make-sg (cria-cab-cobra (sg-corpo sg) (sg-d sg) #false)
+                           (sg-fruta sg)
+                           (sg-d sg)))
+              (if (colisao-cobra? (first (sg-corpo sg)) (rest (sg-corpo sg)))
+                  (make-sg (sg-corpo sg) (sg-fruta sg) "Stop")
+                  (if (colisao-fruta? (first (sg-corpo sg)) (sg-fruta sg))
+                      (make-sg (cria-cab-cobra (sg-corpo sg) (sg-d sg) #true)
+                               (avanca-fruta (sg-fruta sg))
+                               (sg-d sg))
+                      (make-sg (cria-cab-cobra (sg-corpo sg) (sg-d sg) #false)
+                               (sg-fruta sg)
+                               (sg-d sg)))))
+          (make-sg (sg-corpo sg) (sg-fruta sg) "Stop"))))
+
+;; EstadoJogo KeyEvent -> EstadoJogo
+;; Trata os eventos de teclado.
+;; Seta para cima     -> Faz a cobra mudar sua direção para cima
+;; Seta para baixo    -> Faz a cobra mudar sua direção para baixo
+;; Seta para esquerda -> Faz a cobra mudar sua direção para esquerda
+;; Seta para direita  -> Faz a cobra mudar sua direção para direita
+;; Espaço             -> Reinicia o jogo, caso Fim de Jogo.
+(check-expect (trata-tecla JOGO-INICIAL "up")
+              (make-sg (cons (make-cobra 300 250)
+                             (cons (make-cobra (+ 300 VELOCIDADE) 250)
+                                   '()))
+                       (make-fruta 150 150)
+                       "Up"))
+(check-expect (trata-tecla JOGO-INICIAL "down")
+              (make-sg (cons (make-cobra 300 250)
+                             (cons (make-cobra (+ 300 VELOCIDADE) 250)
+                                   '()))
+                       (make-fruta 150 150)
+                       "Down"))
+(check-expect (trata-tecla JOGO-INICIAL "left")
+              (make-sg (cons (make-cobra 300 250)
+                             (cons (make-cobra (+ 300 VELOCIDADE) 250)
+                                   '()))
+                       (make-fruta 150 150)
+                       "Left"))
+(check-expect (trata-tecla JOGO-INICIAL "right")
+              (make-sg (cons (make-cobra 300 250)
+                             (cons (make-cobra (+ 300 VELOCIDADE) 250)
+                                   '()))
+                       (make-fruta 150 150)
+                       "Right"))
+(check-expect (trata-tecla (make-sg (cons (make-cobra 15 15) '())
+                                    (make-fruta 150 150)
+                                    "Stop") " ")
+              (make-sg (cons (make-cobra 15 15) '())
+                                    (make-fruta 150 150)
+                                    "Ini"))
+(check-expect (trata-tecla JOGO-INICIAL "a")
+              JOGO-INICIAL)
+
+(define (trata-tecla sg ke)
+  (cond [(key=? ke "up")
+         (cond [(string=? (sg-d sg) "Down") sg]
+               [else (make-sg (sg-corpo sg)
+                              (sg-fruta sg)
+                              "Up")])]
+        [(key=? ke "down")
+         (cond [(string=? (sg-d sg) "Up") sg]
+               [else (make-sg (sg-corpo sg)
+                              (sg-fruta sg)
+                              "Down")])]
+        [(key=? ke "left")
+         (cond [(string=? (sg-d sg) "Right") sg]
+               [else (make-sg (sg-corpo sg)
+                              (sg-fruta sg)
+                              "Left")])]
+        [(key=? ke "right")
+         (cond [(string=? (sg-d sg) "Left") sg]
+               [else (make-sg (sg-corpo sg)
+                              (sg-fruta sg)
+                              "Right")])]
+        [(key=? ke " ")
+         (if (string=? (sg-d sg) "Stop")
+             (make-sg (sg-corpo sg)
+                      (sg-fruta sg)
+                      "Ini")
+             sg)]
+        [else sg]))
+
+;; Fruta Imagem -> Imagem
+;; Produz a imagem posicionando a fruta.
+(check-expect (desenha-fruta (make-fruta 150 150) FUNDO)
+              (place-image/align FRUTA
+                                 150
+                                 150
+                                 "left"
+                                 "top"
+                                 FUNDO))
+
+(define (desenha-fruta f img)
+  (place-image/align FRUTA
+                     (fruta-x f)
+                     (fruta-y f)
+                     "left"
+                     "top"
+                     img))
+
+;; Cobra Imagem -> Imagem
+;; Produz a imagem posicionando a cobra.
+(check-expect (desenha-cobra (make-cobra 150 150) FUNDO)
+              (place-image/align COBRA
+                                 150
+                                 150
+                                 "left"
+                                 "top"
+                                 FUNDO))
+
+(define (desenha-cobra c img)
+  (place-image/align COBRA
+                     (cobra-x c)
+                     (cobra-y c)
+                     "left"
+                     "top"
+                     img))
+
+;; Corpo Imagem -> Imagem
+;; Produz a imagem posicionando cada segmento de cobra, todo seu corpo.
+(check-expect (desenha-corpo (cons (make-cobra 289 300)
+                                   (cons (make-cobra 299.25 300)
+                                         (cons (make-cobra 309.50 300) '())))
+                             FUNDO)
+              .)
+
+(define (desenha-corpo c img)
+  (cond [(empty? c) img]
+        [else
+         (desenha-cobra (first c)
+                        (desenha-corpo (rest c) img))]))
+
+;; Fruta -> Fruta
+;; Avança o estado da fruta atualizando sua posição.
+(check-random (avanca-fruta (make-fruta 20 20))
+              (make-fruta (+ FRUTA-MIN (random (- FRUTA-MAX FRUTA-MIN)))
+                          (+ FRUTA-MIN (random (- FRUTA-MAX FRUTA-MIN)))))
+
+(define  (avanca-fruta f)
+  (make-fruta (+ FRUTA-MIN (random (- FRUTA-MAX FRUTA-MIN)))
+              (+ FRUTA-MIN (random (- FRUTA-MAX FRUTA-MIN)))))
+
+;; Corpo -> Corpo
+;; Avança o estado do corpo da cobra atualizando sua posição.
+(check-expect (avanca-corpo (cons (make-cobra 50 50) '()))
+              '())
+(check-expect (avanca-corpo (cons (make-cobra 50 50) (cons
+                                                      (make-cobra
+                                                       (+ 50 VELOCIDADE)
+                                                       (+ 50 VELOCIDADE)) '())))
+              (cons (make-cobra 50 50) '()))
+(define (avanca-corpo c)
+  (cond [(empty? (rest c))
+         '()]
+        [else
+         (cons (first c) (avanca-corpo (rest c)))]))
+
+;; Corpo Direção Boolean -> Corpo
+;; Cria a nova cabeça da cobra a partira da direção d e
+;; atualiza a posição do corpo se o booleano for #false,
+;; se #true, cria a nova cabeça da cobra sem atualizar a posição
+;; do corpo.
+(check-expect (cria-cab-cobra (cons (make-cobra 30 30)
+                                    (cons (make-cobra 30 41) '()))
+                              "Up"
+                              #false)
+              (cons (make-cobra 30 19.75)
+                    (cons (make-cobra 30 30) '())))
+
+(check-expect (cria-cab-cobra (cons (make-cobra 30 30)
+                                    (cons (make-cobra 30 19) '()))
+                              "Down"
+                              #true)
+              (cons (make-cobra 30 40.25)
+                    (cons (make-cobra 30 30)
+                          (cons (make-cobra 30 19) '()))))
+
+(check-expect (cria-cab-cobra (cons (make-cobra 30 30)
+                                    (cons (make-cobra 41 30) '()))
+                              "Left"
+                              #false)
+              (cons (make-cobra 19.75 30)
+                    (cons (make-cobra 30 30) '())))
+
+(check-expect (cria-cab-cobra (cons (make-cobra 30 30)
+                                    (cons (make-cobra 19 30) '()))
+                              "Right"
+                              #true)
+              (cons (make-cobra 40.25 30)
+                    (cons (make-cobra 30 30)
+                          (cons (make-cobra 19 30) '()))))
+
+
+(define (cria-cab-cobra c d b)
+  (if (false? b)
+      (cond [(string=? d "Up") (cons (make-cobra (cobra-x (first c))
+                                                 (- (cobra-y (first c)) VELOCIDADE))
+                                     (avanca-corpo c))]
+            [(string=? d "Down") (cons (make-cobra (cobra-x (first c))
+                                                   (+ (cobra-y (first c)) VELOCIDADE))
+                                       (avanca-corpo c))]
+            [(string=? d "Left") (cons (make-cobra (- (cobra-x (first c)) VELOCIDADE)
+                                                   (cobra-y (first c)))
+                                       (avanca-corpo c))]
+            [(string=? d "Right") (cons (make-cobra (+ (cobra-x (first c)) VELOCIDADE)
+                                                    (cobra-y (first c)))
+                                        (avanca-corpo c))]
+            [else c])
+      (cond [(string=? d "Up") (cons (make-cobra (cobra-x (first c))
+                                                 (- (cobra-y (first c)) VELOCIDADE))
+                                     c)]
+            [(string=? d "Down") (cons (make-cobra (cobra-x (first c))
+                                                   (+ (cobra-y (first c)) VELOCIDADE))
+                                       c)]
+            [(string=? d "Left") (cons (make-cobra (- (cobra-x (first c)) VELOCIDADE)
+                                                   (cobra-y (first c)))
+                                       c)]
+            [(string=? d "Right") (cons (make-cobra (+ (cobra-x (first c)) VELOCIDADE)
+                                                    (cobra-y (first c)))
+                                        c)]
+            [else c])))
+
+;; =================
+;; Colisão SnakeGame
+
+;; Cobra -> Caixa
+;; Produz a caixa delimitadora para c.
+(check-expect (cobra-caixa (make-cobra 100 200))
+              (make-caixa 100 200 TAM TAM))
+
+(define (cobra-caixa c)
+  (make-caixa (cobra-x c) (cobra-y c) TAM TAM))
+
+;; Fruta -> Caixa
+;; Produz a caixa delimitadora para f.
+(check-expect (fruta-caixa (make-fruta 150 150))
+              (make-caixa 150 150 (/ TAM 2) (/ TAM 2)))
+
+(define (fruta-caixa f)
+  (make-caixa (fruta-x f) (fruta-y f) (/ TAM 2) (/ TAM 2)))
+
+;; Cobra Fruta -> Boolean
+;; Cria a caixa de Cobra e Fruta e verifica se há colisão, se houver
+;; retorna #true e #false caso contrário.
+(check-expect (colisao-fruta? (make-cobra 300 300) (make-fruta 150 150))
+              #false)
+
+(define (colisao-fruta? c f)
+  (caixa-colisao? (cobra-caixa c) (fruta-caixa f)))
+
+;; Cobra ListaDeCobra -> Boolean
+;; Verifica se há colisão entre a cabeça da cobra e seus segmentos,
+;; se houver retorna #true, se não, #false.
+(check-expect (colisao-cobra? (make-cobra 300 300)
+                              (cons (make-cobra (- 300 VELOCIDADE)
+                                                (- 300 VELOCIDADE)) '()))
+              #false)
+
+(define (colisao-cobra? c l)
+  (if (empty? (first l))
+      #false
+      (if (caixa-colisao? (cobra-caixa c) (cobra-caixa (first l)))
+          #true
+          (if (empty? (rest l))
+              #false
+              (colisao-cobra? c (rest l))))))
+
+;; Cobra FUNDO-CAIXA -> Boolean
+;; Verifica se há colisão entre a cabeça da cobra e o espaço jogável,
+;; se houver retorna #true, se não, #false.
+(check-expect (colisao-jogo? (make-cobra 300 300))
+              #true)
+(check-expect (colisao-jogo? (make-cobra 15 15))
+              #false)
+(check-expect (colisao-jogo? (make-cobra 585 585))
+              #false)
+
+(define (colisao-jogo? c)
+  (caixa-colisao? (cobra-caixa c) FUNDO-CAIXA))
+
+;; =================
+;; Colisão
+
+(define-struct caixa [x y largura altura])
+;; Caixa é (make-caixa NúmeroPositivo NúmeroPositivo NúmeroPositivo NúmeroPositivo).
+;; Interp. uma caixa delimitadora com o canto superior esquerdo
+;;         na posição (x, y) e com a largura e altura especificados.
+;; com o canto superior esquerdo na origem
+(define EX-CAXA-1 (make-caixa 0 0 50 70))
+(define EX-CAXA-2 (make-caixa 10 20 50 70))
+
+#;
+(define (fn-para-caixa c)
+  (... (caixa-x c)
+       (caixa-y c)
+       (caixa-largura c)
+       (caixa-altura c)))
+
+;; A caixa delimitadora para o espaço jogavel.
+(define FUNDO-CAIXA (make-caixa 25 25 550 550))
+
+;; Caixa Caixa -> Booleano
+;; Produz #true se existe colisão entre as caixas,
+;; #false caso contrário.
+; fixa (eixo y): caixa a vem antes da caixa b
+; variável: posição da borda direita de a
+(check-expect (caixa-colisao? (make-caixa 10 20 100 200)
+                              (make-caixa 300 400 50 100)) #false)
+(check-expect (caixa-colisao? (make-caixa 210 20 100 200)
+                              (make-caixa 300 400 50 100)) #false)
+(check-expect (caixa-colisao? (make-caixa 310 20 100 200)
+                              (make-caixa 300 400 50 100)) #false)
+(check-expect (caixa-colisao? (make-caixa 410 20 100 200)
+                              (make-caixa 300 400 50 100)) #false)
+; fixa: (eixo y) interseção da parte de baixo de a com a parte de cima de b
+; variável: posição da borda direita de a
+(check-expect (caixa-colisao? (make-caixa 10 250 100 200)
+                              (make-caixa 300 400 50 100)) #false)
+(check-expect (caixa-colisao? (make-caixa 210 250 100 200)
+                              (make-caixa 300 400 50 100)) #true)
+(check-expect (caixa-colisao? (make-caixa 310 250 100 200)
+                              (make-caixa 300 400 50 100)) #true)
+(check-expect (caixa-colisao? (make-caixa 410 250 100 200)
+                              (make-caixa 300 400 50 100)) #false)
+; fixa: (eixo y) interseção da parte de cima de a com a parte de baixo de b
+; variável: posição da borda direita de a
+(check-expect (caixa-colisao? (make-caixa 10 450 100 200)
+                              (make-caixa 300 400 50 100)) #false)
+(check-expect (caixa-colisao? (make-caixa 210 450 100 200)
+                              (make-caixa 300 400 50 100)) #true)
+(check-expect (caixa-colisao? (make-caixa 310 450 100 200)
+                              (make-caixa 300 400 50 100)) #true)
+(check-expect (caixa-colisao? (make-caixa 410 450 100 200)
+                              (make-caixa 300 400 50 100)) #false)
+; fixa: (eixo y) caixa a vem depois da caixa b
+; variável: posição da borda direita de a
+(check-expect (caixa-colisao? (make-caixa 10 550 100 200)
+                              (make-caixa 300 400 50 100)) #false)
+(check-expect (caixa-colisao? (make-caixa 210 550 100 200)
+                              (make-caixa 300 400 50 100)) #false)
+(check-expect (caixa-colisao? (make-caixa 310 550 100 200)
+                              (make-caixa 300 400 50 100)) #false)
+(check-expect (caixa-colisao? (make-caixa 410 550 100 200)
+                              (make-caixa 300 400 50 100)) #false)
+; (define (caixa-colisao? a b) #false) ; esboço
+(define (caixa-colisao? a b)
+  (and
+   ; borda direta de a vem antes da borda esquerda de b
+   (< (caixa-x a) (+ (caixa-x b) (caixa-largura b)))
+   ; borda direta de b vem antes da borda esquerda de a
+   (< (caixa-x b) (+ (caixa-x a) (caixa-largura a)))
+   ; borda superior de a vem antes da borda inferior de b
+   (< (caixa-y a) (+ (caixa-y b) (caixa-altura b)))
+   ; borda superior de b vem antes da borda inferior de a
+   (< (caixa-y b) (+ (caixa-y a) (caixa-altura a)))))
